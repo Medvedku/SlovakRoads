@@ -1,0 +1,74 @@
+# SSC (Slovenská správa ciest) export sources.
+# Each entry: year of the export and the download URL of the CSV file.
+# Files are saved to `dest` as {year}_ssc_export.csv.
+
+[download]
+dest = "data/ssc"
+
+[[source]]
+year = 2010
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2010/csv/cestneobjekty_k_01012010.csv"
+
+[[source]]
+year = 2011
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2011/csv/co_mosty_k_01012011.csv"
+
+[[source]]
+year = 2012
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2012/csv/co_mosty_k_01012012.csv"
+
+[[source]]
+year = 2013
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2013/csv/co_mosty_k_01012013.csv"
+
+[[source]]
+year = 2014
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2014/csv/co_mosty_k_01012014.csv"
+
+[[source]]
+year = 2015
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2015/csv/co_pocty_most-01-01-2015.csv"
+
+[[source]]
+year = 2016
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2016/csv/co_most_dc_sr_206-01-01.csv"
+
+[[source]]
+year = 2017
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2017/csv/co_most-dc_2017-01-01_sr.csv"
+
+[[source]]
+year = 2018
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2018/csv/co_most_dc_sr_2018-01-01.csv"
+
+[[source]]
+year = 2019
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2019/csv/co_most_dc_2019-01-01.csv"
+
+[[source]]
+year = 2020
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2020/csv/co_most_dc_2020-01-01.csv"
+
+[[source]]
+year = 2021
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2021/csv/sr_co_most_dc_2021-01-01.csv"
+
+[[source]]
+year = 2022
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2022/csv/sr_co_mosty-dc_zoznam_2022-01-01.csv"
+
+[[source]]
+year = 2023
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2023/csv/sr_co_mostydc_reportpk_2023-01-01.csv"
+
+[[source]]
+year = 2024
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2024/csv/sr_co_mostydc_reportpk_2024-01-01.csv"
+
+[[source]]
+year = 2025
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2025/csv/sr_co_report_mostypk_2025-01-01.csv"
+
+[[source]]
+year = 2026
+url = "https://www.cdb.sk/files/documents/cestna-databanka/vystupy-cdb/2026/csv/sr_co_report_mostypk_2026-01-01.csv"

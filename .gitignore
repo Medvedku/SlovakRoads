@@ -1,0 +1,19 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+*.csv
+# Data - published as GitHub releases, never in repo
+data/
+
+# Editor / OS
+.vscode/
+.DS_Store
+*.bak
