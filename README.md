@@ -33,7 +33,9 @@ uv run mosty rebuild
 ```
 
 That is the whole pipeline, equivalent to running the three steps below
-in order. Rebuild refuses to overwrite an existing database file.
+in order. The database is written to `data/mosty.db` unless you pass
+`--db data/mosty_2025.db`; rebuild refuses to overwrite an existing file,
+so delete the old one first when rebuilding.
 
 ### Step by step
 
@@ -60,11 +62,28 @@ uv run mosty init data/ssc/2025_ssc_export.csv --db data/mosty_2025.db
 uv run mosty history data/ssc/2017_ssc_export.csv --db data/mosty_2025.db
 ```
 
-Each year loads once; loading an already-present year is refused. Years 2022+
-use a different (Most/DC split) format and are handled by the yearly update
-command, not the history loader. The 2010 export stays out on purpose: its
-object IDs were renumbered by 2011, so less than 10% of bridges can be mapped —
-not worth the noise.
+Each year loads once; loading an already-present year is refused. The 2010
+export stays out on purpose: its object IDs were renumbered by 2011, so less
+than 10% of bridges can be mapped — not worth the noise.
+
+### Yearly update (2022+ format)
+
+Merge a newer export into an existing database — accepts a local path or a
+download URL (downloads to `data/ssc/`, encoding fixed automatically); with
+no argument it prompts for one:
+
+```sh
+uv run mosty update data/ssc/2026_ssc_export.csv --db data/mosty_2025.db
+```
+
+The update shows a diff report first (new bridges, bridges gone, condition
+changes) and asks for confirmation; `--yes` skips the prompt. Applying it
+overwrites current values, inserts new bridges, archives bridges missing
+from the export (`archived`, `archived_year` on `bridges` — they are kept,
+never deleted), refreshes `locations`, and appends one `conditions` row per
+bridge for the new year. Bridges that disappear and reappear under a new ID
+in the same year are usually renumbered, not demolished — check the report
+before trusting the archive list.
 
 ### The 2011 ID bridge
 
@@ -80,7 +99,7 @@ SQLite file with five tables:
 
 | table | content |
 |---|---|
-| `bridges` | one row per bridge: name, road, year built, dimensions |
+| `bridges` | one row per bridge: name, road, year built, dimensions; `archived`/`archived_year` mark bridges that disappeared from a later export |
 | `dcs` | dilatation units (*dilatačné celky*) — the bridge's children: material, construction type, load capacities, coordinates; FK to `bridges` |
 | `locations` | bridge placement on road sections (úsek ID, nodes, staničenie); FK to `bridges` |
 | `conditions` | history: one row per bridge and year — condition (*stavebno-technický stav*) and load capacities; FK to `bridges` |

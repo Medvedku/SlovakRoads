@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mosty.db import snake, INTEGER_COLS
+from mosty.export import snake
 
 # unified conditions column -> possible column names in old exports
 CONDITION_MAP = {

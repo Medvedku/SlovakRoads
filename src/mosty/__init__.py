@@ -6,6 +6,7 @@ from mosty.db import build
 from mosty.download import download_all
 from mosty.history import build as build_history
 from mosty.rebuild import run as rebuild
+from mosty.update import run as update
 
 DEFAULT_DB = Path("data/mosty.db")
 DEFAULT_INIT_YEAR = 2025
@@ -37,6 +38,13 @@ def main() -> None:
                     help="init year, the ground-zero export (default: 2025)")
     rb.add_argument("--config", type=Path, default=Path("sources.toml"), help="config path")
 
+    up = sub.add_parser("update", help="merge a newer export into an existing database")
+    up.add_argument("source", nargs="?", default=None,
+                    help="path or URL of the new export (prompts if missing)")
+    up.add_argument("--db", type=Path, default=DEFAULT_DB, help="database path")
+    up.add_argument("--year", type=int, help="export year (default: from file name)")
+    up.add_argument("--yes", action="store_true", help="apply without confirmation")
+
     args = parser.parse_args()
     year = _guess_year(args) if args.command in ("init", "history") else None
     if args.command == "download":
@@ -47,6 +55,13 @@ def main() -> None:
         build_history(args.db, args.csv, year)
     elif args.command == "rebuild":
         rebuild(args.db, args.year, args.config)
+    elif args.command == "update":
+        source = args.source
+        if source is None:
+            source = input("path or URL of the new export: ").strip()
+            if not source:
+                sys.exit("error: no source given")
+        update(source, args.db, args.year, args.yes)
 
 
 def _guess_year(args) -> int:

@@ -5,7 +5,6 @@ Usage:
 """
 
 import hashlib
-import re
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -13,43 +12,16 @@ from pathlib import Path
 
 import pandas as pd
 
-SCHEMA_VERSION = 1
+from mosty.export import (
+    BRIDGE_COLS,
+    DC_COLS,
+    LOCATION_COLS,
+    conditions_per_bridge,
+    load_export,
+    split_rows,
+)
 
-# Column groups define where each attribute belongs in the database.
-BRIDGE_COLS = [
-    "trieda_pk", "číslo_pk", "názov_mosta", "správcovské_číslo",
-    "rok_postavenia", "zaťažovacia_trieda_stn", "počet_otvorov",
-    "dĺžka_premostenia", "dĺžka_nosnej_konštrukcie", "volná_šírka_mosta",
-    "šírka_medzi_obrubami", "plocha_mosta", "plocha_nosnej_konštrukcie",
-    "okres",
-]
-DC_COLS = [
-    "stavebno_technický_stav", "druh_konštrukcie", "material",
-    "normána_zaťažiteľnost", "výhradná_zaťažiteľnosť",
-    "výnimočná_zaťažiteľnosť", "ojedinelá_zaťažiteľnosť",
-    "zaťažiteľnosť_na_nápravu", "spôsob_stanovenia", "predmet_premostenia",
-    "longitude", "latitude", "vyska", "správca_dc_mostu", "vlastník_dc_mostu",
-]
-LOCATION_COLS = [
-    "úsek_id", "smer_úseku_pk", "typ_úseku_pk", "počiatočný_uzol_úseku_pk",
-    "koncový_uzol_úseku_pk", "správca_úseku_pk", "vlastník_úseku_pk",
-    "úsekové_staničenie_začiatku_dc", "kilometrovníkové_staničenie_začiatku_dc",
-    "kumulatívne_staničenie_začiatku_dc", "poradie",
-]
-# columns converted to numbers on import; everything else stays TEXT
-NUMERIC_COLS = {
-    "rok_postavenia", "počet_otvorov", "dĺžka_premostenia",
-    "dĺžka_nosnej_konštrukcie", "volná_šírka_mosta", "šírka_medzi_obrubami",
-    "plocha_mosta", "plocha_nosnej_konštrukcie", "longitude", "latitude",
-    "vyska", "normána_zaťažiteľnost", "výhradná_zaťažiteľnosť",
-    "výnimočná_zaťažiteľnosť", "ojedinelá_zaťažiteľnosť",
-    "zaťažiteľnosť_na_nápravu", "úsekové_staničenie_začiatku_dc",
-    "kilometrovníkové_staničenie_začiatku_dc",
-    "kumulatívne_staničenie_začiatku_dc", "poradie",
-}
-INTEGER_COLS = {"rok_postavenia", "počet_otvorov", "poradie"}
-# fix source typos / unify names after generic snake-casing
-RENAME = {"pocha_mosnej_konštrukcie": "plocha_nosnej_konštrukcie"}
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS metadata (
@@ -62,7 +34,9 @@ CREATE TABLE IF NOT EXISTS bridges (
     rok_postavenia INTEGER, zaťažovacia_trieda_stn TEXT, počet_otvorov INTEGER,
     dĺžka_premostenia REAL, dĺžka_nosnej_konštrukcie REAL,
     volná_šírka_mosta REAL, šírka_medzi_obrubami REAL,
-    plocha_mosta REAL, plocha_nosnej_konštrukcie REAL, okres TEXT
+    plocha_mosta REAL, plocha_nosnej_konštrukcie REAL, okres TEXT,
+    archived INTEGER NOT NULL DEFAULT 0,
+    archived_year INTEGER
 );
 CREATE TABLE IF NOT EXISTS dcs (
     id_dc TEXT PRIMARY KEY,
@@ -98,39 +72,29 @@ CREATE TABLE IF NOT EXISTS conditions (
 """
 
 
-def snake(h: str) -> str:
-    h = re.sub(r"\s*/\s*(m2|m|t|km)\s*$", "", h.strip())
-    h = "_".join(h.replace("-", " ").split()).lower()
-    h = h.replace("most_/dc", "most_dc")
-    return RENAME.get(h, h)
+def write_metadata(con: sqlite3.Connection, meta: dict) -> None:
+    con.executemany("INSERT OR REPLACE INTO metadata (key, value) VALUES (?, ?)", meta.items())
 
 
-def load_export(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path, sep=";", dtype=str, encoding="utf-8")
-    df.columns = [snake(c) for c in df.columns]
-    df = df.loc[:, [c for c in df.columns if c]]
-    df = df.drop(columns=["most_dc"])
-    df["bridge_id"] = df["id_mosta"].fillna(
-        df["id_dc"].str.replace(r"\.\d+$", "", regex=True)
-    )
-    for col in NUMERIC_COLS & set(df.columns):
-        cleaned = (
-            df[col].str.replace("\xa0", "").str.replace(" ", "").str.replace(",", ".")
-        )
-        df[col] = pd.to_numeric(cleaned, errors="coerce")
-    for col in INTEGER_COLS & set(df.columns):
-        df[col] = df[col].astype("Int64")
-    expected = {"id_mosta", "id_dc", "bridge_id", *BRIDGE_COLS, *DC_COLS, *LOCATION_COLS}
-    for col in expected - set(df.columns):
-        df[col] = pd.NA
-    return df
+def source_meta(csv_path: Path, year: int, prefix: str = "source") -> dict:
+    return {
+        f"{prefix}_file": csv_path.name,
+        f"{prefix}_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
+        f"{prefix}_year": str(year),
+        f"{prefix}_imported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    }
+
+
+def count_rows(con: sqlite3.Connection) -> dict:
+    return {
+        t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        for t in ("bridges", "dcs", "locations", "conditions")
+    }
 
 
 def build(db_path: Path, csv_path: Path, year: int) -> None:
     raw = load_export(csv_path)
-
-    most_rows = raw[raw["id_mosta"].notna()]
-    dc_rows = raw[raw["id_dc"].notna()]
+    most_rows, dc_rows = split_rows(raw)
 
     bridges = most_rows.groupby("bridge_id", sort=False, as_index=False).first()
     dcs = dc_rows.groupby("id_dc", sort=False, as_index=False).first()
@@ -154,41 +118,21 @@ def build(db_path: Path, csv_path: Path, year: int) -> None:
         "locations", con, if_exists="append", index=False
     )
 
-    cond = dc_rows[["bridge_id", "stavebno_technický_stav", *DC_COLS[3:8]]].copy()
-    # one row per bridge: DCs of the same bridge carry the same values,
-    # except stav on multi-DC bridges - keep all distinct values there
-    cond = cond.groupby("bridge_id", sort=False, as_index=False).first()
-    multi = dc_rows.groupby("bridge_id")["stavebno_technický_stav"].nunique()
-    multi = multi[multi > 1].index
-    if len(multi):
-        joined = (
-            dc_rows[dc_rows["bridge_id"].isin(multi)]
-            .groupby("bridge_id")["stavebno_technický_stav"]
-            .agg(lambda s: " | ".join(sorted(set(s.dropna()))))
-        )
-        cond.loc[cond["bridge_id"].isin(multi), "stavebno_technický_stav"] = cond[
-            "bridge_id"
-        ].map(joined)
+    cond = conditions_per_bridge(dc_rows)
     cond.insert(1, "year", year)
     cond.to_sql("conditions", con, if_exists="append", index=False)
 
-    meta = {
+    meta = source_meta(csv_path, year)
+    meta.update({
         "schema_version": str(SCHEMA_VERSION),
-        "source_file": csv_path.name,
-        "source_sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(),
-        "source_year": str(year),
-        "imported_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "bridges": str(len(bridges)),
         "dcs": str(len(dcs)),
         "locations": str(len(locations)),
-    }
-    con.executemany("INSERT INTO metadata (key, value) VALUES (?, ?)", meta.items())
+    })
+    write_metadata(con, meta)
     con.commit()
 
-    counts = {
-        t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-        for t in ("bridges", "dcs", "locations", "conditions")
-    }
+    counts = count_rows(con)
     orphans = con.execute(
         "SELECT COUNT(*) FROM dcs WHERE bridge_id NOT IN (SELECT id_mosta FROM bridges)"
     ).fetchone()[0]
