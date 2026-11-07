@@ -58,8 +58,28 @@ def snake(h: str) -> str:
     return RENAME.get(h, h)
 
 
+def read_export_rows(path: Path) -> tuple[list[str], list[list[str]]]:
+    """Parse the export and drop malformed rows (field count != header)."""
+    import csv
+
+    with path.open(encoding="utf-8", newline="") as f:
+        reader = csv.reader(f, delimiter=";")
+        header = next(reader)
+        rows, dropped = [], 0
+        for row in reader:
+            if len(row) == len(header):
+                rows.append(row)
+            else:
+                dropped += 1
+    if dropped:
+        print(f"warning: {path.name}: dropped {dropped} malformed row(s) "
+              f"(field count mismatch)")
+    return header, rows
+
+
 def load_export(path: Path) -> pd.DataFrame:
-    df = pd.read_csv(path, sep=";", dtype=str, encoding="utf-8")
+    header, rows = read_export_rows(path)
+    df = pd.DataFrame(rows, columns=header)
     df.columns = [snake(c) for c in df.columns]
     df = df.loc[:, [c for c in df.columns if c]]
     df = df.drop(columns=["most_dc"])

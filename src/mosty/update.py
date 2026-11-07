@@ -7,6 +7,7 @@ Usage:
 """
 
 import hashlib
+import shutil
 import sqlite3
 import sys
 from datetime import datetime, timezone
@@ -115,6 +116,17 @@ def changed_conditions(con: sqlite3.Connection, year: int,
     )
 
 
+def _py(v):
+    """Bind-safe value: NA -> None, numpy scalars -> native Python types."""
+    if v is None or (not isinstance(v, str) and pd.isna(v)):
+        return None
+    if isinstance(v, (bool, int, float, str)):
+        return v
+    if hasattr(v, "item"):
+        return v.item()
+    return v
+
+
 def apply(con: sqlite3.Connection, csv_path: Path, year: int,
           raw: pd.DataFrame, most_rows: pd.DataFrame, dc_rows: pd.DataFrame,
           new_bridges: set, gone_bridges: set) -> None:
@@ -127,7 +139,7 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
     # upsert bridges
     cols = ["bridge_id", *BRIDGE_COLS]
     for row in bridges[cols].itertuples(index=False, name=None):
-        values = [None if pd.isna(v) else v for v in row[1:]]
+        values = [_py(v) for v in row[1:]]
         con.execute(
             f"""INSERT INTO bridges (id_mosta, {', '.join(BRIDGE_COLS)})
                 VALUES ({', '.join('?' * (len(cols)))})
@@ -146,7 +158,7 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
     # upsert dcs (skip dcs of unknown bridges - they are inserted with their bridge)
     dc_cols = ["id_dc", "bridge_id", *DC_COLS]
     for row in dcs[dc_cols].itertuples(index=False, name=None):
-        values = [None if pd.isna(v) else v for v in row[2:]]
+        values = [_py(v) for v in row[2:]]
         con.execute(
             f"""INSERT INTO dcs (id_dc, bridge_id, {', '.join(DC_COLS)})
                 VALUES ({', '.join('?' * len(dc_cols))})
@@ -161,7 +173,7 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
         f"INSERT INTO locations (bridge_id, {', '.join(LOCATION_COLS)}) "
         f"VALUES ({', '.join('?' * (1 + len(LOCATION_COLS)))})",
         [
-            tuple(None if pd.isna(v) else v for v in row)
+            tuple(_py(v) for v in row)
             for row in locations[["bridge_id", *LOCATION_COLS]].itertuples(
                 index=False, name=None
             )
@@ -190,11 +202,20 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
 
 def run(source: str, db_path: Path, year: int | None, assume_yes: bool) -> None:
     if not db_path.exists():
-        sys.exit(f"error: database {db_path} does not exist - run init/rebuild first")
+        sys.exit(f"error: database {db_path} does not exist - run init/rebuild first, "
+                 "or use --from-release")
 
     csv_path, csv_year = fetch_csv(source)
     if year is not None:
         csv_year = year
+
+    # the updated database is written to a NEW file named by the year it now
+    # holds; the input database (e.g. ground zero) stays untouched
+    out_path = db_path.parent / f"mosty_{csv_year}.db"
+    if out_path.resolve() == db_path.resolve():
+        sys.exit(f"error: {db_path} already holds year {csv_year} - nothing to update")
+    if out_path.exists():
+        sys.exit(f"error: {out_path} already exists - delete it to rebuild")
 
     con = sqlite3.connect(db_path)
     meta = dict(con.execute("SELECT key, value FROM metadata"))
@@ -220,8 +241,14 @@ def run(source: str, db_path: Path, year: int | None, assume_yes: bool) -> None:
             print("update cancelled")
             return
 
+    con.close()
+    shutil.copy2(db_path, out_path)
+    print(f"writing updated database: {out_path}")
+    con = sqlite3.connect(out_path)
+
     apply(con, csv_path, csv_year, raw, most_rows, dc_rows,
           new_bridges, gone_bridges)
     print("counts:", "  ".join(f"{k}: {v}" for k, v in count_rows(con).items()))
     con.close()
-    print(f"database updated to year {csv_year}")
+    print(f"base database {db_path} left untouched")
+    print(f"to publish: upload {out_path} as GitHub release asset {out_path.name}")

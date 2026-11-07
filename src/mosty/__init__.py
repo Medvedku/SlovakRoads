@@ -6,6 +6,7 @@ from mosty.db import build
 from mosty.download import download_all
 from mosty.history import build as build_history
 from mosty.rebuild import run as rebuild
+from mosty.releases import fetch_latest_db
 from mosty.update import run as update
 
 DEFAULT_DB = Path("data/mosty.db")
@@ -41,7 +42,11 @@ def main() -> None:
     up = sub.add_parser("update", help="merge a newer export into an existing database")
     up.add_argument("source", nargs="?", default=None,
                     help="path or URL of the new export (prompts if missing)")
-    up.add_argument("--db", type=Path, default=DEFAULT_DB, help="database path")
+    up.add_argument("--db", type=Path, default=None,
+                    help="database path (default: data/mosty.db, or the latest "
+                         "GitHub release when --from-release)")
+    up.add_argument("--from-release", action="store_true",
+                    help="use the latest published database release as the base")
     up.add_argument("--year", type=int, help="export year (default: from file name)")
     up.add_argument("--yes", action="store_true", help="apply without confirmation")
 
@@ -61,7 +66,10 @@ def main() -> None:
             source = input("path or URL of the new export: ").strip()
             if not source:
                 sys.exit("error: no source given")
-        update(source, args.db, args.year, args.yes)
+        db = args.db
+        if db is None:
+            db = fetch_latest_db() if args.from_release else DEFAULT_DB
+        update(source, db, args.year, args.yes)
 
 
 def _guess_year(args) -> int:

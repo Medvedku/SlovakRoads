@@ -1,4 +1,4 @@
-# mosty
+# SlovakRoads
 
 Database of road bridges on Slovak roads (*mosty* = bridges), built from public
 exports of the Slovak road administration. One command builds a SQLite database
@@ -56,7 +56,7 @@ on disk.
 uv run mosty init data/ssc/2025_ssc_export.csv --db data/mosty_2025.db
 ```
 
-**3. Append condition history** from older exports (2011–2021 era):
+**3. Append condition history** from older exports (2011–2024 era):
 
 ```sh
 uv run mosty history data/ssc/2017_ssc_export.csv --db data/mosty_2025.db
@@ -68,22 +68,36 @@ than 10% of bridges can be mapped — not worth the noise.
 
 ### Yearly update (2022+ format)
 
-Merge a newer export into an existing database — accepts a local path or a
-download URL (downloads to `data/ssc/`, encoding fixed automatically); with
-no argument it prompts for one:
+Merge a newer export into an existing database. The base database stays
+untouched — the result is always a **new file named by the year it now
+holds**:
 
 ```sh
+# fetch the latest published database from GitHub releases as the base
+uv run mosty update --from-release
+
+# or start from a local database
 uv run mosty update data/ssc/2026_ssc_export.csv --db data/mosty_2025.db
 ```
 
+The new export can be a local path or a download URL (downloaded to
+`data/ssc/`, encoding fixed automatically); with no argument the command
+prompts for one.
+
 The update shows a diff report first (new bridges, bridges gone, condition
 changes) and asks for confirmation; `--yes` skips the prompt. Applying it
-overwrites current values, inserts new bridges, archives bridges missing
-from the export (`archived`, `archived_year` on `bridges` — they are kept,
-never deleted), refreshes `locations`, and appends one `conditions` row per
-bridge for the new year. Bridges that disappear and reappear under a new ID
-in the same year are usually renumbered, not demolished — check the report
-before trusting the archive list.
+writes `data/mosty_{year}.db`: it overwrites current values, inserts new
+bridges, archives bridges missing from the export (`archived`,
+`archived_year` on `bridges` — they are kept, never deleted), refreshes
+`locations`, and appends one `conditions` row per bridge for the new year.
+
+Bridges that disappear and reappear under a new ID in the same year are
+usually renumbered, not demolished — check the report before trusting the
+archive list.
+
+The downloaded release database is sanity-checked on fetch: it must be a
+valid SQLite file with the current schema version and a readable source
+year, and the update refuses to apply an export older than the base.
 
 ### The 2011 ID bridge
 
@@ -107,6 +121,7 @@ SQLite file with five tables:
 
 Condition values on the 1–7 severity scale: `Bezchybný`, `Veľmi dobrý`,
 `Dobrý`, `Uspokojivý`, `Zlý`, `Veľmi zlý`, `Havarijný` (code 7 = Havarijný).
+Full schema documentation with query examples: [docs/database.md](docs/database.md).
 
 Example — condition history of bridge M2717:
 
@@ -120,6 +135,12 @@ ORDER BY year;
 ## Publishing
 
 The repository ships code only. Databases are published as GitHub release
-assets; the source CSVs must be downloaded from CDB. Provenance of every
-import lives in the `metadata` table, so any released database testifies
-where its data came from.
+assets. The ground-zero release ships the asset `mosty.db`; updated releases
+ship `mosty_{year}.db` under that exact name (`mosty_2026.db`,
+`mosty_2027.db`, ...). `update --from-release` always fetches the newest
+published database and sanity-checks it, so users running the yearly update
+never need to track releases manually.
+
+Provenance of every import lives in the `metadata` table (source file,
+SHA-256, import date, row counts), so any released database testifies where
+its data came from.

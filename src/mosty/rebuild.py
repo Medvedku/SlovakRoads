@@ -12,9 +12,9 @@ from mosty.db import build as build_db
 from mosty.download import download_all
 from mosty.history import build as build_history
 
-# years loadable by the history loader (evidence-number / M#### era);
-# 2022+ uses the Most/DC format and belongs to the future update command
-SUPPORTED_HISTORY_YEARS = range(2011, 2022)
+# years loadable by the history loader: 2011-2021 legacy format plus
+# 2022-2024 modern format (init/update handle 2025+); 2010 stays out
+SUPPORTED_HISTORY_YEARS = range(2011, 2025)
 
 
 def run(db_path: Path, year: int, config_path: Path = Path("sources.toml")) -> None:

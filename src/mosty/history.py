@@ -15,7 +15,12 @@ from pathlib import Path
 
 import pandas as pd
 
-from mosty.export import snake
+from mosty.export import (
+    conditions_per_bridge,
+    load_export,
+    snake,
+    split_rows,
+)
 
 # unified conditions column -> possible column names in old exports
 CONDITION_MAP = {
@@ -83,7 +88,20 @@ def resolve(df: pd.DataFrame, candidates: list[str]) -> str | None:
     return None
 
 
+def is_modern_format(path: Path) -> bool:
+    """2022+ exports have id_mosta/id_dc columns (Most/DC split rows)."""
+    header = pd.read_csv(path, sep=";", nrows=0)
+    return "ID mosta" in header.columns
+
+
 def load_history(path: Path, bridge_map_csv: Path = DEFAULT_BRIDGE_MAP_CSV) -> pd.DataFrame:
+    if is_modern_format(path):
+        # 2022-2024: same format as init/update, reuse the shared loader
+        raw = load_export(path)
+        _, dc_rows = split_rows(raw)
+        cond = conditions_per_bridge(dc_rows)
+        return cond.rename(columns={"bridge_id": "bridge_id"})
+
     df = pd.read_csv(path, sep=";", dtype=str, encoding="utf-8")
     df.columns = [snake(c) for c in df.columns]
     df = df.loc[:, [c for c in df.columns if c]]
