@@ -7,6 +7,7 @@ Usage:
 """
 
 import hashlib
+import re
 import shutil
 import sqlite3
 import sys
@@ -34,7 +35,7 @@ def fetch_csv(source: str) -> tuple[Path, int]:
     """Resolve a local path or URL to a CSV file; returns (path, year)."""
     if source.startswith("http://") or source.startswith("https://"):
         name = Path(urlparse(source).path).name
-        year_match = __import__("re").search(r"(20\d\d)", name)
+        year_match = re.search(r"(20\d\d)", name)
         if not year_match:
             sys.exit(f"error: cannot guess year from URL file name: {name}")
         year = int(year_match.group(1))
@@ -60,7 +61,6 @@ def fetch_csv(source: str) -> tuple[Path, int]:
     path = Path(source)
     if not path.exists():
         sys.exit(f"error: file not found: {path}")
-    import re
 
     year_match = re.search(r"(20\d\d)", path.name)
     if not year_match:
@@ -167,8 +167,12 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
             (row[0], row[1], *values),
         )
 
-    # locations are fully derived - replace wholesale
-    con.execute("DELETE FROM locations")
+    # locations are fully derived - refresh rows of bridges present in the
+    # new export; archived bridges keep their last known locations
+    con.executemany(
+        "DELETE FROM locations WHERE bridge_id = ?",
+        [(b,) for b in locations["bridge_id"].dropna().unique()],
+    )
     con.executemany(
         f"INSERT INTO locations (bridge_id, {', '.join(LOCATION_COLS)}) "
         f"VALUES ({', '.join('?' * (1 + len(LOCATION_COLS)))})",
@@ -183,9 +187,6 @@ def apply(con: sqlite3.Connection, csv_path: Path, year: int,
     # append conditions for this year
     cond = conditions_per_bridge(dc_rows)
     cond.insert(1, "year", year)
-    existing_years = {r[0] for r in con.execute("SELECT DISTINCT year FROM conditions")}
-    if year in existing_years:
-        sys.exit(f"error: conditions for {year} already exist - refusing")
     cond.to_sql("conditions", con, if_exists="append", index=False)
 
     meta = source_meta(csv_path, year)
@@ -226,6 +227,9 @@ def run(source: str, db_path: Path, year: int | None, assume_yes: bool) -> None:
             f"error: database holds year {db_year}, update export is {csv_year} - "
             "the update must be newer"
         )
+    if csv_year in {r[0] for r in con.execute("SELECT DISTINCT year FROM conditions")}:
+        con.close()
+        sys.exit(f"error: conditions for {csv_year} already exist - refusing")
 
     raw = load_export(csv_path)
     most_rows, dc_rows = split_rows(raw)

@@ -82,7 +82,10 @@ def load_export(path: Path) -> pd.DataFrame:
     df = pd.DataFrame(rows, columns=header)
     df.columns = [snake(c) for c in df.columns]
     df = df.loc[:, [c for c in df.columns if c]]
-    df = df.drop(columns=["most_dc"])
+    df = df.drop(columns=["most_dc"], errors="ignore")
+    # empty id fields are missing, not the bridge "" (csv module keeps "")
+    df["id_mosta"] = df["id_mosta"].replace("", pd.NA)
+    df["id_dc"] = df["id_dc"].replace("", pd.NA)
     df["bridge_id"] = df["id_mosta"].fillna(
         df["id_dc"].str.replace(r"\.\d+$", "", regex=True)
     )
@@ -93,6 +96,10 @@ def load_export(path: Path) -> pd.DataFrame:
         df[col] = pd.to_numeric(cleaned, errors="coerce")
     for col in INTEGER_COLS & set(df.columns):
         df[col] = df[col].astype("Int64")
+    # blank text cells are missing data, not empty strings (legacy-year
+    # loaders store them as NULL; keep the two consistent)
+    obj_cols = df.select_dtypes(include="object").columns
+    df[obj_cols] = df[obj_cols].replace("", pd.NA)
     expected = {"id_mosta", "id_dc", "bridge_id", *BRIDGE_COLS, *DC_COLS, *LOCATION_COLS}
     for col in expected - set(df.columns):
         df[col] = pd.NA

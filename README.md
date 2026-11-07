@@ -33,8 +33,8 @@ uv run mosty rebuild
 ```
 
 That is the whole pipeline, equivalent to running the three steps below
-in order. The database is written to `data/mosty.db` unless you pass
-`--db data/mosty_2025.db`; rebuild refuses to overwrite an existing file,
+in order. The database is written to `data/mosty_{year}.db` (named by the
+init year, default 2025); rebuild refuses to overwrite an existing file,
 so delete the old one first when rebuilding.
 
 ### Step by step
@@ -53,14 +53,18 @@ on disk.
 **2. Build the ground-zero database** from the current export:
 
 ```sh
-uv run mosty init data/ssc/2025_ssc_export.csv --db data/mosty_2025.db
+uv run mosty init data/ssc/2025_ssc_export.csv
 ```
+
+Defaults to `data/mosty_2025.db`, named by the export year.
 
 **3. Append condition history** from older exports (2011–2024 era):
 
 ```sh
-uv run mosty history data/ssc/2017_ssc_export.csv --db data/mosty_2025.db
+uv run mosty history data/ssc/2017_ssc_export.csv
 ```
+
+Defaults to the newest `data/mosty_YYYY.db`; pass `--db` to pick another.
 
 Each year loads once; loading an already-present year is refused. The 2010
 export stays out on purpose: its object IDs were renumbered by 2011, so less
@@ -73,16 +77,19 @@ untouched — the result is always a **new file named by the year it now
 holds**:
 
 ```sh
-# fetch the latest published database from GitHub releases as the base
+# fetch the newest published mosty_*.db as the base
 uv run mosty update --from-release
 
-# or start from a local database
-uv run mosty update data/ssc/2026_ssc_export.csv --db data/mosty_2025.db
+# or start from a local database (defaults to the newest data/mosty_YYYY.db)
+uv run mosty update data/ssc/2026_ssc_export.csv
 ```
 
 The new export can be a local path or a download URL (downloaded to
 `data/ssc/`, encoding fixed automatically); with no argument the command
-prompts for one.
+prompts for one. `--from-release` searches **all** releases of the repo
+for the newest `mosty_*.db` asset (other database assets are ignored),
+asks whether to update it, and only then prompts for the export;
+`--yes` skips both questions.
 
 The update shows a diff report first (new bridges, bridges gone, condition
 changes) and asks for confirmation; `--yes` skips the prompt. Applying it
@@ -137,10 +144,10 @@ ORDER BY year;
 The repository ships code only. Databases are published as GitHub release
 assets. The ground-zero release ships the asset `mosty.db`; updated releases
 ship `mosty_{year}.db` under that exact name (`mosty_2026.db`,
-`mosty_2027.db`, ...). `update --from-release` always fetches the newest
-published database and sanity-checks it, so users running the yearly update
-never need to track releases manually.
+`mosty_2027.db`, ...).
 
 Provenance of every import lives in the `metadata` table (source file,
 SHA-256, import date, row counts), so any released database testifies where
-its data came from.
+its data came from. `update --from-release` finds the newest `mosty_*.db`
+across **all** releases and sanity-checks the download, so users running
+the yearly update never need to track releases manually.
